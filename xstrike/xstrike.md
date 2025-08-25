@@ -4,6 +4,17 @@ Keywords: kernel, linux, module, block device, regex, regex engine
 
 Linux kernel module.
 
+## TODO
+
+- [ ] ioctl changing current regex pattern.
+- [ ] open, release for cleanup.
+- [ ] read, write:
+   - [ ] Test what happens if data is given in multiple read or write calls `fpos`.
+- [ ] regex engine:
+   - [ ] character and string match.
+   - [ ] ? and |.
+   - [ ] +, *.
+
 ## Resources
 
 - [Linux kernel source code](https://www.kernel.org/).
@@ -59,3 +70,10 @@ qemu-system-x86_64 -kernel ./linux-6.15.8/arch/x86/boot/bzImage -nographic -appe
 - Building modules docs.
 - What does the `__init` macro do?
 - sysfs and proc
+- what is `__user`.
+- what types should you use in the kernel.
+- how is kmalloc implemented.
+- what is the lifetime of memory passed through ioctl?
+- What are pointers excatly i still get confused.
+- What is sizeof() with a const string, whats the size etc.
+- Add debug info to this notes
