@@ -4,17 +4,6 @@ Keywords: kernel, linux, module, block device, regex, regex engine
 
 Linux kernel module.
 
-## TODO
-
-- [ ] ioctl changing current regex pattern.
-- [ ] open, release for cleanup.
-- [ ] read, write:
-   - [ ] Test what happens if data is given in multiple read or write calls `fpos`.
-- [ ] regex engine:
-   - [ ] character and string match.
-   - [ ] ? and |.
-   - [ ] +, *.
-
 ## Resources
 
 - [Linux kernel source code](https://www.kernel.org/).
