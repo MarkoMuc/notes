@@ -240,4 +240,43 @@ destruction in received.
 
 == `libwayland` in depth
 
+`libwayland` is the most popular Wayland implementation.
+The library includes a few simple primitives and a pre-compiled version of `wayland.xml`, the core Wayland protocol.
 
+=== `wayland-util` primitives
+
+`wayland-util.h` defines a number of structures, utility functions and macros for Wayland applications.
+
+Among these are:
+
+  - Structures for *marshalling*#footnote[#link("https://en.wikipedia.org/wiki/Marshalling_(computer_science)")]
+    and unmarshalling Wayland protocol messages in generated code.
+  - A linked list `wl_list` implementation.
+  - An array `wl_array` implementation.
+  - Utilities for conversion between Wayland scalar types and C scalar types.
+  - Debug logging.
+
+=== `wayland-scanner`
+
+`wayland-scanner` is packed with the Wayland package. It is used to generate C headers & glue code from the XML files.
+
+Generally you run `wayland-scanner` at build time, then compile and link your application to the glue code.
+
+=== Proxies and resources
+
+An object is an entity known to the client and server that has some state, changes to which are negotiated over the wire.
+
+On the client side, `libwayland` refers to these objects through the `wl_proxy` interface.
+This is a proxy for the abstract object, and provides functions which are indirectly used by the client to marshall requests.
+On the server side, objects are abstracted through `wl_resource`, which is similar to the proxy but also tracks which object
+belongs to which client.
+
+=== Interfaces and listeners
+
+Interfaces and listeners are the highest abstraction in `libwayland`, primitives, proxies and listeners are just
+low level implementations specific to each `interface` and `listener` generated  by `wayland-scanner`.
+
+Both the client and server listen for messages using `wl_listener`.
+The server-side code for interfaces and listeners is identical, but reversed.
+When a message is received, it first looks up the object ID and its interface, then uses that to decode the message.
+Then it looks for listeners on this object and invokes your functions with the arguments to the message.
