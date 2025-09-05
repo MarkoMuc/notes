@@ -1,5 +1,12 @@
 = Wayland Book
 
+#pagebreak()
+
+= Table of Contents
+#outline()
+
+#pagebreak()
+
 == Introduction
 
 Wayland is the next generation display server for Unix-systems.
@@ -280,3 +287,159 @@ Both the client and server listen for messages using `wl_listener`.
 The server-side code for interfaces and listeners is identical, but reversed.
 When a message is received, it first looks up the object ID and its interface, then uses that to decode the message.
 Then it looks for listeners on this object and invokes your functions with the arguments to the message.
+
+== The Wayland display
+
+Up to now we have discussed how wayland objects are jointly managed by the server and client.
+We have yet to describe how the object itself is created.
+The Wayland display, or `wl_display`, implicitly exists on every Wayland connection.
+It has the following interface:
+
+```XML
+<interface name="wl_display" version="1">
+  <request name="sync">
+    <arg name="callback" type="new_id" interface="wl_callback"
+       summary="callback object for the sync request"/>
+  </request>
+
+  <request name="get_registry">
+    <arg name="registry" type="new_id" interface="wl_registry"
+      summary="global registry object"/>
+  </request>
+
+  <event name="error">
+    <arg name="object_id" type="object" summary="object where the error occurred"/>
+    <arg name="code" type="uint" summary="error code"/>
+    <arg name="message" type="string" summary="error description"/>
+  </event>
+
+  <enum name="error">
+    <entry name="invalid_object" value="0" />
+    <entry name="invalid_method" value="1" />
+    <entry name="no_memory" value="2" />
+    <entry name="implementation" value="3" />
+  </enum>
+
+  <event name="delete_id">
+    <arg name="id" type="uint" summary="deleted object ID"/>
+  </event>
+</interface>
+```
+
+The registry (`get_registry`) is used to allocate other objects.
+This chapter will cover how to use functions related to `wl_display`, which is less about
+the interface and protocol itself and more about the internals of `libwayland`.
+
+=== Creating the display
+
+This section explains how to use the `libwayland` implementation to create a display.
+
+==== Wayland clients
+
+Compile with `-lwayland-client` flag and make sure to include the `wayland-client.h` file.
+
+Establishing the connection and creating the display is done with `wl_display_connect(const char *name)`:
+- `name` argument is the Wayland display (typically `wayland-0`),
+  this corresponds to the name of a Unix socket in `$XDG_RUNTIME_DIR`
+    #footnote[
+      This `env` variable is set at login, more information:
+      #link("https://askubuntu.com/questions/872792/what-is-xdg-runtime-dir")].
+  - `NULL` is preferred
+- The following procedure describes how `libwayland` searches for the display socket:
+  + If `$WAYLAND_DISPLAY` is set, attempt to connect to `$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY`
+  + Otherwise, attempt to connect to `$XDG_RUNTIME_DIR/wayland-0`
+  + Otherwise, fail.
+- The user controls which display is used by changing the env variable `$WAYLAND_DISPLAY`.
+- E.g.: ```BASH $ WAYLAND_DISPLAY=wayland-1 ./client```
+
+You can also manually connect and create a Wayland display from a file descriptor:
+```C
+struct wl_display *wl_display_connect_to_fd(int fd);
+```
+
+Obtaining the file descriptor of a `wl_display` is done with:
+```C
+int wl_display_get_fd(struct wl_display *display);
+```
+
+The connection is closed with:
+```C
+wl_display_disconnect(display);
+```
+
+==== Wayland servers
+
+The code is compiled with `-lwayland-server` and `wayland-server.h` header file.
+
+The creation of the display and binding to a socket are separate, to give the server time to configure
+the display, before clients are able to connect to it.
+
+This is done with the following two functions:
+
+```C
+struct wl_display *display = wl_display_create();
+const char *socket = wl_display_add_socket_auto(display);
+```
+
+`wl_display_add_socket_auto` will allow `libwayland` to decide the name for the display automatically.
+Which defaults to `wayland-0`, or `wayland-$n`, depending on whether any other Wayland compositors
+have sockets in `$XDG_RUNTIME_DIR`.
+
+There are also more manual options:
+```C
+int wl_display_add_socket(struct wl_display *display, const char *name);
+int wl_display_add_socket_fd(struct wl_display *display, int sock_fd);
+```
+
+After adding the socket, calling `wl_display_run` will run `libwayland's` internal event loop
+and block until `wl_displat_terminate` is called.
+
+The display is destroyed with:
+```C
+wl_display_destroy(display);
+```
+
+=== Incorporating an event loop
+
+`libwayland` provides its own event loop implementation for Wayland servers, and its considered out-of-scope.
+You do not need to use this event loop implementation, you can use a custom one.
+
+==== Wayland server event loop
+
+Each `wl_display` created by `libwayland` has its own corresponding `wl_event_loop`.
+A reference to this `wl_event_loop` can be obtained with `wl_display_get_event_loop`.
+A Wayland compositor will likely want to use this as its only event loop.
+You can add file descriptors, timers, signals to the event loop with:
+```C
+wl_event_loop_add_fd()
+wl_event_loop_add_timer()
+wl_event_loop_add_signal()
+```
+
+Once the event loop is configured, you can process events and dispatch clients by calling
+`wl_display_run`, which will process the event loop and block until the display terminates.
+Most Wayland compositors use this approach.
+
+However you can also monitor the event loop on your own, dispatching it as necessary, or
+you can disregard it entirely and manually process client updates.
+You can also treat the Wayland event loop as subservient (self managed) to your own event loop.
+This is done by using `wl_event_loop_get_fd` to obtain a 
+#emph("poll-able") #footnote[#link("https://pubs.opengroup.org/onlinepubs/009695399/functions/poll.html")]
+file descriptor, then call `wl_event_loop_dispatch` to process events when activity occurs on that file descriptor.
+You also need to call `wl_display_flush_clients` when you have data which needs writing to clients.
+
+==== Wayland client event loop
+
+`libwayland-client` does not have its own event loop.
+A simple loop suffices for one file descriptor instances:
+
+```C
+while (wl_display_dispatch(display) != -1) {
+    /* This space deliberately left blank */
+}
+```
+
+However you can build your own event loop, by obtaining the Wayland display's file descriptor with `wl_display_get_fd`.
+Upon `POLLIN` events, call `wl_display_dispatch` to process incoming events. To flush outgoing requests, call `wl_display_flush`.
+
+== Globals and the registry
