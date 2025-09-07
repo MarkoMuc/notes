@@ -1,17 +1,40 @@
-= Wayland Book
+#set page(
+  paper: "a4",
+  margin: (x: 1.8cm, y: 1.5cm),
+)
+
+#set text(
+  font: "New Computer Modern",
+  size: 10pt
+)
+
+#set par(
+  justify: true,
+  leading: 0.52em,
+  first-line-indent: 1em,
+)
+
+#align(center)[
+  #v(30%)
+  #text(
+    2em,
+    weight: "bold",
+    "Wayland book; notes"
+  )
+]
 
 #pagebreak()
 
-= Table of Contents
 #outline()
 
 #pagebreak()
+#set heading(numbering: "1.")
 
-== Introduction
+= Introduction
 
 Wayland is the next generation display server for Unix-systems.
 
-=== High-level design
+== High-level design
 
 Computers have multiple *input* and *output* devices, they are responsible for receiving information from you
 and displaying information to you.
@@ -22,7 +45,7 @@ their windows in their appropriate place on your outputs.
 
 The process of bringing together all of your application windows for displaying on an output is called *composing*.
 
-=== In practice
+== In practice
 
 Multiple distinct software components are part of the graphics/display stack.
 Some tools of the tools found part of the Linux desktop stack are:
@@ -31,7 +54,7 @@ Some tools of the tools found part of the Linux desktop stack are:
 - Buffer allocation with GBM.
 - Userspace libdrm library, libinput, evdev, etc.
 
-=== The hardware
+== The hardware
 
 Interfacing input and output devices is done by several components inside the operating system.
 This can be interfaces for USB, PCI, etc. Hardware has little concept of what applications are
@@ -39,7 +62,7 @@ running on the system. The hardware only provides an interface with which it can
 perform work, and do what it is told, regardless of who tells it so. For this reason, only one component
 is allowed to talk to hardware, this is the *kernel*.
 
-=== The kernel
+== The kernel
 
 The job of the kernel is to provide an abstraction over the hardware, so that it can be safely accessed from the *userspace*.
 The userspace is also where the Wayland compositor runs.
@@ -57,52 +80,52 @@ In the case of DRM, these files are in `/dev/dri`:
 
 For evdev, the device nodes are in `/dev/input/event*`.
 
-=== The userspace
+== The userspace
 
 Applications in the userspace are isolated from the hardware and must work with it via the device nodes provided by the kernel.
 
-==== `libdrm` #footnote[#link("https://github.com/tobiasjakobi/libdrm")]
+=== `libdrm` #footnote[#link("https://github.com/tobiasjakobi/libdrm")]
 
 `libdrm` is the userspace portion of the DRM subsystem. It's a library providing an C API for interfacing with DRM.
 `libdrm` is used by Wayland compositors to do mode setting and other DRM operations. It is generally not used by the
 Wayland clients directly.
 
-==== Mesa #footnote[#link("https://mesa3d.org/")]
+=== Mesa #footnote[#link("https://mesa3d.org/")]
 
 Mesa is one of the core parts of the Linux graphics stack.
 It provides an abstraction over `libdrm` known as *GBM* (Generic Buffer Management) library for
 allocating buffers on the GPU. It also provides vendor-optimized implementations of OpenGL, etc.
 
-==== `libinput` #footnote[#link("https://wayland.freedesktop.org/libinput/doc/latest/")]
+=== `libinput` #footnote[#link("https://wayland.freedesktop.org/libinput/doc/latest/")]
 
 `libinput` is the userspace abstraction library for evdev.
 It's responsibility is to receive input events from the kernel, decoding them, and passing them to the Wayland compositor.
 The Wayland compositor requires special permission to use the evdev files, forcing the Wayland clients to go through the
 compositor to receive input events (for security reasons).
 
-==== `(e)udev` #footnote[#link("https://en.wikipedia.org/wiki/Udev and https://github.com/eudev-project/eudev")]
+=== `(e)udev` #footnote[#link("https://en.wikipedia.org/wiki/Udev and https://github.com/eudev-project/eudev")]
 
 Dealing with the appearance of new devices from the kernel, as well as configuring permissions for the resulting
 device nodes in `/dev`, and sending word of the changes to the applications running on the system, is a responsibility
 that falls onto the userspace. Most systems use `udev` or `eudev` for this purpose.
 The Wayland compositor uses udev to interface, enumerate and notify about changes with input devices.
 
-==== `xkbcommon` #footnote[#link("https://xkbcommon.org/")]
+=== `xkbcommon` #footnote[#link("https://xkbcommon.org/")]
 
 XKB is the original keyboard handling subsystem for Xorg server. Its now an independent keyboard library.
 Libinput delivers keyboard events in the form of scan codes, which are keyboard dependent.
 XKB translates the scan codes into generic key "symbols".
 It also contains a state machine which knows how to process key combinations.
 
-==== `pixman` #footnote[#link("https://www.pixman.org/")]
+=== `pixman` #footnote[#link("https://www.pixman.org/")]
 
 Library for efficient manipulation of pixel buffers.
 
-==== `libwayland` #footnote[#link("https://wayland.freedesktop.org/")]
+=== `libwayland` #footnote[#link("https://wayland.freedesktop.org/")]
 
 `libwayland` handles most of the low-level wire protocol.
 
-=== The Wayland Package
+== The Wayland Package
 
 The Wayland package consists of `libwayland-client`, `libwayland-server`, `wayland-scanner` and `wayland.xml`.
 When installed they can be found in `/usr/lib & /usr/include`, `/usr/bin` and `/usr/share/wayland/`.
@@ -112,7 +135,7 @@ This package is the most popular implementation of Wayland.
 - `wayland-scanner`: Processes the XML files and generates code from them #footnote[Other scanners also exist, like `wayland-rs` and `waymonad-scanner`].
 - `libwayland`: There are two libraries, one for the client side of the wire protocol and one for the server side.
 
-== Protocol Design
+= Protocol Design
 
 The Wayland protocol consists of serveral layers of abstractions:
 
@@ -123,7 +146,7 @@ The Wayland protocol consists of serveral layers of abstractions:
 
 On top of this we also have some broader patters which are frequently used in Wayland protocol design.
 
-=== Wire protocol basics
+== Wire protocol basics
 
 The wire protocol is a stream of 32-bit values, encoded with the host's byte order.
 The protocol consists of the following primitive types:
@@ -142,7 +165,7 @@ The following other types are also used:
         in the Unix domain socket message (`msg_control`).
 - `enum`: A single value or bitmap from an enumeration of known constants, encoded into a 32-bit integer.
 
-==== Messages
+=== Messages
 
 The wire protocol is a stream of messages built with these primitives.
 Every message is an event (server to client) or request (client to server) which acts upon an #emph("object").
@@ -161,7 +184,7 @@ Structure of the message
 To understand a message, the client and server have to establish the objects in the first place.
 Object ID `1` is pre-allocated as the Wayland display `singleton`, and can be used to bootstrap other objects.
 
-==== Object IDs
+=== Object IDs
 
 When a message comes in with a `new_id` argument, the sender allocates an object ID for it.
 The interface used for this object is established through additional arguments, or agreed upon in advance for that request/event.
@@ -171,7 +194,7 @@ IDs begin at the lower end of the range.
 
 An object ID of `0` represents a null object; that is, a non-existent object or the explicit lack of an object.
 
-==== Transports
+=== Transports
 
 The Unix domain socket is used for message transportation.
 Unix sockets are used because of *file descriptor messages*.
@@ -187,26 +210,26 @@ To find the Unix socket to connect to, most implementation do the same as libway
 + Assure the socket name is `wayland-0` and concat with `XDG_RUNTIME_DIR` to form the path to the Unix socket.
 + Give up.
 
-=== Interfaces, requests and event
+== Interfaces, requests and event
 
 The protocol works by issuing #emph("requests") and #emph("events") that act on #emph("objects").
 Each object has an #emph("interface") which defines what requests and events are possible, and the #emph("signature") of each.
 Let's consider an example interface: `wl_surface`.
 
-==== Requests
+=== Requests
 
 A surface is a box of pixels that can be displayed on-screen.
 It's one of the primitives, used for building application windows.
 One of its #emph("requests"), send from the client to the server, is "damage",
 which is used by the client to indicate that some part of the surface has changed and needs to be redrawn.
 
-==== Events
+=== Events
 
 Events are sent from the server to the client.
 One of the events the server can send to the surface is "enter",
 which it sends when the surface is being displayed on a specific output.
 
-==== Interfaces
+=== Interfaces
 
 The interfaces which define the list of requests and events, the opcodes associated with each,
 and the signatures with which you can decode the messages, are agreed upon in advance.
@@ -220,11 +243,11 @@ Combined with the list of arguments, you can decode the request or event when it
 and based on the documentation in the XML file you can decide how to program your software to behave accordingly.
 This usually comes in the form of code generation.
 
-=== Protocol design patterns
+== Protocol design patterns
 
 The following are some key concept used in the design of both the Wayland protocol and the protocol extensions.
 
-==== Atomicity
+=== Atomicity
 
 Atomicity is the most important design pattern. Most interfaces allow you tu update them transactionally,
 using several requests to build up a new representations of its state, then committing them all at once.
@@ -234,7 +257,7 @@ These are applied to a #emph("pending") state.
 When the *commit* is sent, the pending state gets merged into the #emph("current") state.
 This enables atomic updates within a single frame, resulting in no tearing or partially updates Windows.
 
-==== Resource lifetimes
+=== Resource lifetimes
 
 We wish to avoid sending events or requests to invalid objects.
 Interfaces which define resources that have finite lifetimes will often include requests and events through
@@ -245,12 +268,12 @@ Wayland is a fully asynchronous protocol. Messages are guaranteed to arrive in t
 with the respect to one sender. The client and server need to correctly handle the objects until a confirmation of
 destruction in received.
 
-== `libwayland` in depth
+= `libwayland` in depth
 
 `libwayland` is the most popular Wayland implementation.
 The library includes a few simple primitives and a pre-compiled version of `wayland.xml`, the core Wayland protocol.
 
-=== `wayland-util` primitives
+== `wayland-util` primitives
 
 `wayland-util.h` defines a number of structures, utility functions and macros for Wayland applications.
 
@@ -263,13 +286,13 @@ Among these are:
   - Utilities for conversion between Wayland scalar types and C scalar types.
   - Debug logging.
 
-=== `wayland-scanner`
+== `wayland-scanner`
 
 `wayland-scanner` is packed with the Wayland package. It is used to generate C headers & glue code from the XML files.
 
 Generally you run `wayland-scanner` at build time, then compile and link your application to the glue code.
 
-=== Proxies and resources
+== Proxies and resources
 
 An object is an entity known to the client and server that has some state, changes to which are negotiated over the wire.
 
@@ -278,7 +301,7 @@ This is a proxy for the abstract object, and provides functions which are indire
 On the server side, objects are abstracted through `wl_resource`, which is similar to the proxy but also tracks which object
 belongs to which client.
 
-=== Interfaces and listeners
+== Interfaces and listeners
 
 Interfaces and listeners are the highest abstraction in `libwayland`, primitives, proxies and listeners are just
 low level implementations specific to each `interface` and `listener` generated  by `wayland-scanner`.
@@ -288,7 +311,7 @@ The server-side code for interfaces and listeners is identical, but reversed.
 When a message is received, it first looks up the object ID and its interface, then uses that to decode the message.
 Then it looks for listeners on this object and invokes your functions with the arguments to the message.
 
-== The Wayland display
+= The Wayland display
 
 Up to now we have discussed how wayland objects are jointly managed by the server and client.
 We have yet to describe how the object itself is created.
@@ -330,15 +353,16 @@ The registry (`get_registry`) is used to allocate other objects.
 This chapter will cover how to use functions related to `wl_display`, which is less about
 the interface and protocol itself and more about the internals of `libwayland`.
 
-=== Creating the display
+== Creating the display
 
 This section explains how to use the `libwayland` implementation to create a display.
 
-==== Wayland clients
+=== Wayland clients
 
 Compile with `-lwayland-client` flag and make sure to include the `wayland-client.h` file.
 
-Establishing the connection and creating the display is done with `wl_display_connect(const char *name)`:
+Establishing the connection and creating the display is done with 
+```C wl_display_connect(const char *name)```:
 - `name` argument is the Wayland display (typically `wayland-0`),
   this corresponds to the name of a Unix socket in `$XDG_RUNTIME_DIR`
     #footnote[
@@ -367,7 +391,7 @@ The connection is closed with:
 wl_display_disconnect(display);
 ```
 
-==== Wayland servers
+=== Wayland servers
 
 The code is compiled with `-lwayland-server` and `wayland-server.h` header file.
 
@@ -399,12 +423,12 @@ The display is destroyed with:
 wl_display_destroy(display);
 ```
 
-=== Incorporating an event loop
+== Incorporating an event loop
 
 `libwayland` provides its own event loop implementation for Wayland servers, and its considered out-of-scope.
 You do not need to use this event loop implementation, you can use a custom one.
 
-==== Wayland server event loop
+=== Wayland server event loop
 
 Each `wl_display` created by `libwayland` has its own corresponding `wl_event_loop`.
 A reference to this `wl_event_loop` can be obtained with `wl_display_get_event_loop`.
@@ -428,7 +452,7 @@ This is done by using `wl_event_loop_get_fd` to obtain a
 file descriptor, then call `wl_event_loop_dispatch` to process events when activity occurs on that file descriptor.
 You also need to call `wl_display_flush_clients` when you have data which needs writing to clients.
 
-==== Wayland client event loop
+=== Wayland client event loop
 
 `libwayland-client` does not have its own event loop.
 A simple loop suffices for one file descriptor instances:
@@ -442,4 +466,33 @@ while (wl_display_dispatch(display) != -1) {
 However you can build your own event loop, by obtaining the Wayland display's file descriptor with `wl_display_get_fd`.
 Upon `POLLIN` events, call `wl_display_dispatch` to process incoming events. To flush outgoing requests, call `wl_display_flush`.
 
-== Globals and the registry
+= Globals and the registry
+
+Each request and event is associated with an object ID.
+When we receive a Wayland message, we must know what interface the object ID represents to decode it.
+We must also negotiate available objects, the creation of new ones, and assign an ID to them, in some manner.
+In Wayland when we #emph("bind") an object ID, we agree on the interface used for it in all future messages,
+and stash a mapping of objects IDs to interfaces in our local state.
+
+The server offers a list of #enum("global") objects, used for bootstrapping.
+Globals are most often used to broker additional objects to fulfill various purposes, such as the creation of windows.
+The globals themselves also have interfaces and object IDs, which also need to be assigned and agreed on.
+
+This is solved by implicitly assigning object ID $1$ to `wl_display` interface when you make the connection.
+The following is the interface for `wl_display`:
+```XML
+<interface name="wl_display" version="1">
+  <request name="sync">
+    <arg name="callback" type="new_id" interface="wl_callback" />
+  </request>
+
+  <request name="get_registry">
+    <arg name="registry" type="new_id" interface="wl_registry" />
+  </request>
+
+  <!-- ... -->
+</interface>
+```
+
+The `wl_display:get_registry` request can be used to bind an object ID to the `wl_registry` interface,
+which is the next one found in `wayland.xml`.
