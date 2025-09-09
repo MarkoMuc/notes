@@ -1,5 +1,13 @@
 # Wayland
 
+Keywords: kernel, linux, image, window manager, compositor, server, client, wayland, display server, display client.
+
+Wayland the communication protocol between a display server and client.
+
+## Look into:
+
+- Better understanding of the Linux Graphic stack.
+
 ## Resources
 
 **All content belongs to its respective owners. No ownership of the archived files is claimed.**

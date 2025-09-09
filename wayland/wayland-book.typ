@@ -359,6 +359,26 @@ This section explains how to use the `libwayland` implementation to create a dis
 
 === Wayland clients
 
+Example code:
+```C
+#include <stdio.h>
+#include <wayland-client.h>
+
+int
+main(int argc, char *argv[])
+{
+    struct wl_display *display = wl_display_connect(NULL);
+    if (!display) {
+        fprintf(stderr, "Failed to connect to Wayland display.\n");
+        return 1;
+    }
+    fprintf(stderr, "Connection established!\n");
+
+    wl_display_disconnect(display);
+    return 0;
+}
+```
+
 Compile with `-lwayland-client` flag and make sure to include the `wayland-client.h` file.
 
 Establishing the connection and creating the display is done with 
@@ -391,7 +411,35 @@ The connection is closed with:
 wl_display_disconnect(display);
 ```
 
-=== Wayland servers
+=== Wayland servers <wayland_server>
+
+Example code:
+```C
+#include <stdio.h>
+#include <wayland-server.h>
+
+int
+main(int argc, char *argv[])
+{
+    struct wl_display *display = wl_display_create();
+    if (!display) {
+        fprintf(stderr, "Unable to create Wayland display.\n");
+        return 1;
+    }
+
+    const char *socket = wl_display_add_socket_auto(display);
+    if (!socket) {
+        fprintf(stderr, "Unable to add socket to Wayland display.\n");
+        return 1;
+    }
+
+    fprintf(stderr, "Running Wayland display on %s\n", socket);
+    wl_display_run(display);
+
+    wl_display_destroy(display);
+    return 0;
+}
+```
 
 The code is compiled with `-lwayland-server` and `wayland-server.h` header file.
 
@@ -496,3 +544,233 @@ The following is the interface for `wl_display`:
 
 The `wl_display:get_registry` request can be used to bind an object ID to the `wl_registry` interface,
 which is the next one found in `wayland.xml`.
+It accepts one argument: *a generated ID for a new object*.
+
+=== Wire message example
+
+```
+BIN: 00000001 000C0001 00000002
+HEX: 0x01 0xC1 0x02
+```
+The first byte is the object ID, in this case $"ID" = 1$, which is the `wl_display` object.
+The most significant nibble in the second byte is the size of the message in bytes.
+The least significant nibble is the `opcode` in this case $"opcode" = 1$, the index of the request
+is tied to the interface, and also it's 0 indexed.
+In this case opcode `1` means the `get_registry` request defined in `wl_display` interface.
+The remaining byte is the argument for the request.
+
+Thus this wire message request operation with opcode `1` on the object with id `1` and passes in the
+argument `2`.
+The request could be written in human readable form as:
+
+```cpp
+wl_display::get_registry(2)
+```
+
+Note that in the XML documentation this new ID is defined ahead of time to be governed by the `wl_registry` interface:
+
+```XML
+<interface name="wl_registry" version="1">
+  <request name="bind">
+    <arg name="name" type="uint" />
+    <arg name="id" type="new_id" />
+  </request>
+
+  <event name="global">
+    <arg name="name" type="uint" />
+    <arg name="interface" type="string" />
+    <arg name="version" type="uint" />
+  </event>
+
+  <event name="global_remove">
+    <arg name="name" type="uint" />
+  </event>
+</interface>
+```
+
+== Binding to globals
+
+Upon creating a registry object, the server will emit the `global` event for each global available on the server.
+You can then bind the globals you require.
+
+#enum("Binding") is the process of taking a known object and assigning it an ID.
+
+Once the client binds to the registry like this, the server emits the `global` event several times to
+advertise which interfaces it supports.
+
+Each global is assigned a unique `name` as a `uint`.
+The `interface` string maps to the name of the interface found in the protocol.
+The `version` number is also defined here.
+
+Example: ```XML <interface name="wl_registry" version="1">```.
+
+To bind to any of these interfaces, we use the bind request.
+Consider the following wire protocol exchange:
+
+```
+C->S    00000001 000C0001 00000002            .... .... ....
+
+S->C    00000002 001C0000 00000001 00000007   .... .... .... ....
+        776C5f73 686d0000 00000001            wl_s hm.. ....
+        [...]
+
+C->S    00000002 00100000 00000001 00000003   .... .... .... ....
+```
+
+The first message is the same as the previous example.
+The second one is an event, object 2 (which the client assigned the `wl_registry` to),
+opcode 0 (```cpp wl_registry::global```) with arguments `1`, `"wl_shm"` and `1`, respectively,
+the name, interface and version of this global.
+The client responds by calling opcode 0 on object ID 2 (```cpp wl_registry::bind```) and assigns
+object ID 3 to global name 1, #emph("binding") to the `wl_shm` global.
+Future events and requests for this object are defined by the `wl_shm` protocol (can be found in `wayland.xml`).
+
+Once a object is created, it can be used for various tasks.
+The `wl_shm` object manages shared memory between the client and server.
+
+== Registering globals
+
+Registering globals on the server side is done differently.
+`wayland-scanner` creates interfaces (analogous to listeners) and glue code for sending events.
+The first task is to register the global, with a function to rig up a #emph("resource")
+#footnote[The server-side state of each client's instance of an object] when the global is bound.
+
+```C
+static void
+wl_output_handle_bind(struct wl_client *client, void *data,
+    uint32_t version, uint32_t id)
+{
+    struct my_state *state = data;
+    // TODO
+}
+
+int
+main(int argc, char *argv[])
+{
+    struct wl_display *display = wl_display_create();
+    struct my_state state = { ... };
+    // ...
+    wl_global_create(wl_display, &wl_output_interface,
+        1, &state, wl_output_handle_bind);
+    // ...
+}
+```
+
+Add this code the example code in @wayland_server and it makes `wl_output` global visible.
+However any attempts to bind to this global runs into our `TODO`.
+We need to provide an #emph("implementation") of the `wl_output` interface as well.
+
+```C
+static void
+wl_output_handle_resource_destroy(struct wl_resource *resource)
+{
+    struct my_output *client_output = wl_resource_get_user_data(resource);
+
+    // TODO: Clean up resource
+
+    remove_to_list(client_output->state->client_outputs, client_output);
+}
+
+static void
+wl_output_handle_release(struct wl_client *client, struct wl_resource *resource)
+{
+    wl_resource_destroy(resource);
+}
+
+static const struct wl_output_interface
+wl_output_implementation = {
+    .release = wl_output_handle_release,
+};
+
+static void
+wl_output_handle_bind(struct wl_client *client, void *data,
+    uint32_t version, uint32_t id)
+{
+    struct my_state *state = data;
+
+    struct my_output *client_output = calloc(1, sizeof(struct client_output));
+
+    struct wl_resource *resource = wl_resource_create(
+        client, &wl_output_interface, wl_output_interface.version, id);
+
+    wl_resource_set_implementation(resource, &wl_output_implementation,
+        client_output, wl_output_handle_resource_destroy);
+
+    client_output->resource = resource;
+    client_output->state = state;
+
+    // TODO: Send geometry event, et al
+
+    add_to_list(state->client_outputs, client_output);
+}
+```
+
+We first extend our `bind` handler to create a `wl_resource` to track the server-side state for this object.
+We then provide `wl_resource_create` with a pointer to our implementation of the interface `wl_output_implementation`.
+This `struct` type is generated by `wayland-scanner` and contains one function pointer for each request supported by the interface.
+We also allocate a small container for storing any additional state we need that `libwayland` doesn't handle for us.
+
+Note that `wl_output_interface` name is shared between the instance of an interface and a global constant variable
+generated by `wayland-scanner` which contains metadata related to the implementation (such as version above).
+
+The `wl_output_handle_release` function is called when the client sends the `release` request, indicating they
+no longer need the resource and it can be destroyed.
+This triggers the `wl_output_handle_resource_destroy` function, which will free any of the state we allocated for it earlier.
+This function is passed into `wl_resource_create` as the destructor, and will be called if the client terminates
+without explicitly sending the `release` request.
+
+The other remaining `TODO` is t send the `name` event, as well as a few others as per the `wayland.xml` file:
+```XML
+<event name="geometry">
+  <description summary="properties of the output">
+The geometry event describes geometric properties of the output.
+The event is sent when binding to the output object and whenever
+any of the properties change.
+
+The physical size can be set to zero if it doesn't make sense for this
+output (e.g. for projectors or virtual outputs).
+  </description>
+  <arg name="x" type="int" />
+  <arg name="y" type="int" />
+  <arg name="physical_width" type="int" />
+  <arg name="physical_height" type="int" />
+  <arg name="subpixel" type="int" enum="subpixel" />
+  <arg name="make" type="string" />
+  <arg name="model" type="string" />
+  <arg name="transform" type="int" enum="transform" />
+</event>
+```
+
+It is our responsibility to send this event when the output is bound:
+
+```C
+static void
+wl_output_handle_bind(struct wl_client *client, void *data,
+    uint32_t version, uint32_t id)
+{
+    struct my_state *state = data;
+
+    struct my_output *client_output = calloc(1, sizeof(struct client_output));
+
+    struct wl_resource *resource = wl_resource_create(
+        client, &wl_output_implementation, wl_output_interface.version, id);
+
+    wl_resource_set_implementation(resource, wl_output_implementation,
+        client_output, wl_output_handle_resource_destroy);
+
+    client_output->resource = resource;
+    client_output->state = state;
+
+    wl_output_send_geometry(resource, 0, 0, 1920, 1080,
+        WL_OUTPUT_SUBPIXEL_UNKNOWN, "Foobar, Inc",
+        "Fancy Monitor 9001 4K HD 120 FPS Noscope",
+        WL_OUTPUT_TRANSFORM_NORMAL);
+
+    add_to_list(state->client_outputs, client_output);
+}
+```
+
+Note that `wl_output::geometry` is shown here for illustrative purposes and you should review the XML before
+implementing this event in your client server.
+
+= Buffers and surfaces
